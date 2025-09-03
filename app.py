@@ -6,7 +6,7 @@ import streamlit as st
 from datetime import datetime
 from src.weighted_draw import run_raffle
 
-st.set_page_config(page_title="가중치 추첨 챗봇", page_icon="🎯")
+st.set_page_config(page_title="하나원큐 당첨자 추첨 챗봇", page_icon="🎯")
 
 DEFAULT_PATH = "/mnt/data/hana_dummy_30000_20250901_084807.xlsx"
 
