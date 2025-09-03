@@ -1,0 +1,32 @@
+unique_key: 고객ID
+eligibility:
+- 나이 >= 19
+weights:
+  성별:
+    type: categorical
+    mapping:
+      남성: 1.0
+      여성: 1.1
+  거주지역:
+    type: categorical
+    mapping:
+      서울: 1.2
+      경기: 1.1
+  나이:
+    type: bucket
+    buckets:
+    - - 19
+      - 29
+      - 1.05
+    - - 30
+      - 39
+      - 1.1
+    - - 40
+      - 49
+      - 1.0
+    - - 50
+      - 120
+      - 0.95
+defaults:
+  categorical: 1.0
+  bucket: 1.0
