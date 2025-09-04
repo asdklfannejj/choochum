@@ -1,0 +1,7 @@
+
+tables:
+  users:
+    fields: [user_id, name, age, gender, region, signup_dt, is_employee, is_test_user, segment]
+  transactions:
+    fields: [user_id, event_id, amount, txn_dt, product_code, channel]
+ops: ["=", "!=", ">", ">=", "<", "<=", "IN", "BETWEEN"]
