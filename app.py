@@ -121,7 +121,8 @@ with st.sidebar:
 
     st.header('2) 기본 설정')
     id_col = st.text_input('ID 칼럼명 (필수)', value='user_id')
-    weight_col = st.text_input('Weight 칼럼명 (선택, 없으면 균등)', value='')
+    # (v4) 가중치 사용 안 함
+    weight_col = ''
 
     st.header('3) 조건 해석 보조(선택)')
     date_col = st.text_input('날짜 칼럼명 (예: txn_dt, created_at)', value='')
@@ -146,6 +147,23 @@ if up is not None:
     st.dataframe(df.head(20))
 
     # Show detected columns
+
+# Fuzzy guess columns
+guesses = guess_columns(df)
+st.info(f"자동 감지 결과 → ID: {guesses.get('id')}, Weight: {guesses.get('weight')}, Date: {guesses.get('date')}, Category: {guesses.get('category')}, Numeric: {guesses.get('numeric')}")
+
+# If inputs are empty or not found, use guesses
+if (not id_col) or (id_col not in df.columns and guesses.get('id')):
+    id_col = guesses.get('id') or id_col
+if (not weight_col) or (weight_col not in df.columns and guesses.get('weight')):
+    weight_col = guesses.get('weight') or weight_col
+if (not date_col) or (date_col not in df.columns and guesses.get('date')):
+    date_col = guesses.get('date') or date_col
+if (not category_col) or (category_col not in df.columns and guesses.get('category')):
+    category_col = guesses.get('category') or category_col
+if (not numeric_col) or (numeric_col not in df.columns and guesses.get('numeric')):
+    numeric_col = guesses.get('numeric') or numeric_col
+
     st.caption('칼럼 예시: ' + ', '.join(map(str, df.columns[:10])) + (' ...' if len(df.columns) > 10 else ''))
 
     # Buttons
@@ -155,14 +173,30 @@ if up is not None:
             if id_col not in df.columns:
                 st.error(f'ID 칼럼 "{id_col}" 을(를) 찾을 수 없습니다. 실제 칼럼명을 확인해 주세요.')
             else:
-                cand = filter_dataframe(df, nl_text, {
-                    'date_col': date_col if date_col in df.columns else None,
-                    'category_col': category_col if category_col in df.columns else None,
-                    'numeric_col': numeric_col if numeric_col in df.columns else None,
-                })
+                
+# 1) 기존 룰 기반 필터 (기간/임직원/테스트/지역 토큰/숫자 조건)
+cand = filter_dataframe(df, nl_text, {
+    'date_col': date_col if date_col in df.columns else None,
+    'category_col': category_col if category_col in df.columns else None,
+    'numeric_col': numeric_col if numeric_col in df.columns else None,
+})
+# 2) 단일 칼럼 임계치/동등 조건 파서 적용
+cond = parse_condition(nl_text, df.columns)
+if cond.get('col') and cond.get('op'):
+    col = cond['col']
+    if cond['op'] == '==':
+        cand = cand[cand[col].astype(str) == str(cond['value'])]
+    else:
+        val = pd.to_numeric(cand[col], errors='coerce')
+        if cond['op'] == '>=': cand = cand[val >= float(cond['value'])]
+        elif cond['op'] == '>': cand = cand[val > float(cond['value'])]
+        elif cond['op'] == '<=': cand = cand[val <= float(cond['value'])]
+        elif cond['op'] == '<': cand = cand[val < float(cond['value'])]
+st.caption(f"해석 결과: 컬럼={cond.get('col')}, 연산={cond.get('op')}, 값={cond.get('value')}, 추첨인원={cond.get('sample_n')}")
+
                 st.session_state['cand_df'] = cand
                 st.session_state['id_col'] = id_col
-                st.session_state['weight_col'] = (weight_col if weight_col in df.columns else None)
+                st.session_state['weight_col'] = None
 
                 st.write(f'후보군 수: {len(cand)}')
                 preview_cols = [c for c in [id_col, weight_col, category_col, numeric_col, date_col] if c in cand.columns]
@@ -179,9 +213,11 @@ if up is not None:
                 idc = st.session_state.get('id_col')
                 wc = st.session_state.get('weight_col')
                 ids = cand[idc].astype(str).tolist()
-                weights = (pd.to_numeric(cand[wc], errors='coerce').fillna(1.0).tolist() if wc else [1.0]*len(cand))
+                weights = [1.0]*len(cand)  # v4: 균등 추첨
                 seed_val = int(seed_in) if seed_in.strip().isdigit() else None
-                winners = weighted_sample(ids, weights, int(k), seed=seed_val)
+                cond = parse_condition(nl_text, df.columns)
+                k_eff = int(cond.get('sample_n') or k)
+                winners = weighted_sample(ids, weights, int(k_eff), seed=seed_val)
                 out = pd.DataFrame({idc: winners})
                 st.subheader('당첨자')
                 st.dataframe(out)
@@ -205,18 +241,33 @@ if up is not None:
                 if id_col not in df.columns:
                     st.error(f'ID 칼럼 "{id_col}" 을(를) 찾을 수 없습니다. 먼저 올바른 ID 칼럼명을 입력하세요.')
                 else:
-                    cand = filter_dataframe(df, nl_text, {
-                        'date_col': date_col if date_col in df.columns else None,
-                        'category_col': category_col if category_col in df.columns else None,
-                        'numeric_col': numeric_col if numeric_col in df.columns else None,
-                    })
+                    
+cand = filter_dataframe(df, nl_text, {
+    'date_col': date_col if date_col in df.columns else None,
+    'category_col': category_col if category_col in df.columns else None,
+    'numeric_col': numeric_col if numeric_col in df.columns else None,
+})
+cond = parse_condition(nl_text, df.columns)
+if cond.get('col') and cond.get('op'):
+    col = cond['col']
+    if cond['op'] == '==':
+        cand = cand[cand[col].astype(str) == str(cond['value'])]
+    else:
+        val = pd.to_numeric(cand[col], errors='coerce')
+        if cond['op'] == '>=': cand = cand[val >= float(cond['value'])]
+        elif cond['op'] == '>': cand = cand[val > float(cond['value'])]
+        elif cond['op'] == '<=': cand = cand[val <= float(cond['value'])]
+        elif cond['op'] == '<': cand = cand[val < float(cond['value'])]
+
             if cand is not None and not cand.empty:
                 idc = id_col
                 wc = (weight_col if weight_col in df.columns else None)
                 ids = cand[idc].astype(str).tolist()
-                weights = (pd.to_numeric(cand[wc], errors='coerce').fillna(1.0).tolist() if wc else [1.0]*len(cand))
+                weights = [1.0]*len(cand)  # v4: 균등 추첨
                 seed_val = int(seed_in) if seed_in.strip().isdigit() else None
-                winners = weighted_sample(ids, weights, int(k), seed=seed_val)
+                cond = parse_condition(nl_text, df.columns)
+                k_eff = int(cond.get('sample_n') or k)
+                winners = weighted_sample(ids, weights, int(k_eff), seed=seed_val)
                 out = pd.DataFrame({idc: winners})
                 st.success(f'추첨 완료! (후보군 {len(cand)}명, 당첨 {len(out)}명)')
                 st.dataframe(out)
