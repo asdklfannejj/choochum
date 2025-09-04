@@ -229,51 +229,52 @@ st.caption(f"해석 결과: 컬럼={cond.get('col')}, 연산={cond.get('op')}, �
     st.subheader('🎯 추첨 실행')
     st.caption('먼저 위에서 조건을 해석해 후보군을 확인하는 것을 권장하지만, 바로 추첨도 가능합니다.')
 
-    if st.button('🎯 추첨 실행 (바로 진행)'):
-        # seed 유효성 검사
-        if seed_in.strip() and not seed_in.strip().isdigit():
-            st.error('seed는 숫자만 입력하세요. 예: 42  (비우면 매 실행마다 다른 결과입니다)')
-        else:
-            # 후보군 준비
-            cand = st.session_state.get('cand_df')
-            if cand is None:
-                # 즉시 필터링 시도
-                if id_col not in df.columns:
-                    st.error(f'ID 칼럼 "{id_col}" 을(를) 찾을 수 없습니다. 먼저 올바른 ID 칼럼명을 입력하세요.')
-                else:
-                    
-cand = filter_dataframe(df, nl_text, {
-    'date_col': date_col if date_col in df.columns else None,
-    'category_col': category_col if category_col in df.columns else None,
-    'numeric_col': numeric_col if numeric_col in df.columns else None,
-})
-cond = parse_condition(nl_text, df.columns)
-if cond.get('col') and cond.get('op'):
-    col = cond['col']
-    if cond['op'] == '==':
-        cand = cand[cand[col].astype(str) == str(cond['value'])]
+    
+if st.button('🎯 추첨 실행 (바로 진행)'):
+    # seed 유효성 검사
+    if seed_in.strip() and not seed_in.strip().isdigit():
+        st.error('seed는 숫자만 입력하세요. 예: 42  (비우면 매 실행마다 다른 결과입니다)')
     else:
-        val = pd.to_numeric(cand[col], errors='coerce')
-        if cond['op'] == '>=': cand = cand[val >= float(cond['value'])]
-        elif cond['op'] == '>': cand = cand[val > float(cond['value'])]
-        elif cond['op'] == '<=': cand = cand[val <= float(cond['value'])]
-        elif cond['op'] == '<': cand = cand[val < float(cond['value'])]
-
-            if cand is not None and not cand.empty:
-                idc = id_col
-                wc = (weight_col if weight_col in df.columns else None)
-                ids = cand[idc].astype(str).tolist()
-                weights = [1.0]*len(cand)  # v4: 균등 추첨
-                seed_val = int(seed_in) if seed_in.strip().isdigit() else None
+        # 후보군 준비: 세션에 없으면 즉시 생성
+        cand = st.session_state.get('cand_df')
+        if cand is None:
+            if id_col not in df.columns:
+                st.error(f'ID 칼럼 "{id_col}" 을(를) 찾을 수 없습니다. 먼저 올바른 ID 칼럼명을 입력하세요.')
+            else:
+                cand = filter_dataframe(df, nl_text, {
+                    'date_col': date_col if date_col in df.columns else None,
+                    'category_col': category_col if category_col in df.columns else None,
+                    'numeric_col': numeric_col if numeric_col in df.columns else None,
+                })
                 cond = parse_condition(nl_text, df.columns)
-                k_eff = int(cond.get('sample_n') or k)
-                winners = weighted_sample(ids, weights, int(k_eff), seed=seed_val)
-                out = pd.DataFrame({idc: winners})
-                st.success(f'추첨 완료! (후보군 {len(cand)}명, 당첨 {len(out)}명)')
-                st.dataframe(out)
-                st.download_button('CSV 다운로드', data=out.to_csv(index=False).encode('utf-8-sig'),
-                                   file_name='winners.csv', mime='text/csv')
-            elif cand is not None and cand.empty:
-                st.warning('후보군이 비어 있습니다. 조건을 완화하거나 칼럼명을 확인하세요.')
+                if cond.get('col') and cond.get('op'):
+                    col = cond['col']
+                    if cond['op'] == '==':
+                        cand = cand[cand[col].astype(str) == str(cond['value'])]
+                    else:
+                        val = pd.to_numeric(cand[col], errors='coerce')
+                        if cond['op'] == '>=':
+                            cand = cand[val >= float(cond['value'])]
+                        elif cond['op'] == '>':
+                            cand = cand[val > float(cond['value'])]
+                        elif cond['op'] == '<=':
+                            cand = cand[val <= float(cond['value'])]
+                        elif cond['op'] == '<':
+                            cand = cand[val < float(cond['value'])]
+        if cand is not None and not cand.empty:
+            ids = cand[id_col].astype(str).tolist()
+            weights = [1.0]*len(cand)  # 균등 추첨
+            seed_val = int(seed_in) if seed_in.strip().isdigit() else None
+            cond = parse_condition(nl_text, df.columns)
+            k_eff = int(cond.get('sample_n') or k)
+            winners = weighted_sample(ids, weights, int(k_eff), seed=seed_val)
+            out = pd.DataFrame({id_col: winners})
+            st.success(f'추첨 완료! (후보군 {len(cand)}명, 당첨 {len(out)}명)')
+            st.dataframe(out)
+            st.download_button('CSV 다운로드', data=out.to_csv(index=False).encode('utf-8-sig'),
+                               file_name='winners.csv', mime='text/csv')
+        else:
+            st.warning('후보군이 비어 있거나 생성되지 않았습니다. 조건을 확인하세요.')
+
 else:
     st.info('좌측에서 엑셀(.xlsx) 또는 CSV를 업로드하세요.')
